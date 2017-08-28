@@ -130,6 +130,7 @@ CREATE TABLE `restriction_enzyme` (\
 `assay_DNA` varchar(32),\
 `survival` int(2),\
 `assay_DNA_cuts` mediumint(9),\
+`reaction_supplement` varchar(255),\
  PRIMARY KEY (`enzyme_id`))\n
 DROP TABLE IF EXISTS `NEBuffer 1.1`\n
 CREATE TABLE `NEBuffer 1.1` (\
@@ -414,9 +415,11 @@ for enzyme in result:
     print("other: " + reaction_supplement + "\n" if reaction_supplement != '' else '', end="")
     print("enzyme activity: " + str(enzyme_activity))
     print("survival: " + survival)
+    print("reaction temperature: " + reaction_temperature)
+    print("reaction supplement: " + reaction_supplement)
 
     # Update enzyme database with default buffer, assay DNA, survival after the whole text has been analyzed
-    query = "UPDATE restriction_enzyme SET default_buffer = '" + enzyme_buffer + "', assay_DNA = '" + assay_DNA + "', survival = " + str(survival_list[survival]) + ", assay_DNA_cuts = " + str(frequency) + " WHERE enzyme_id = " + str(enzyme[0])
+    query = "UPDATE restriction_enzyme SET default_buffer = '" + enzyme_buffer + "', assay_DNA = '" + assay_DNA + "', survival = " + str(survival_list[survival]) + ", assay_DNA_cuts = " + str(frequency) + ", reaction_temperature = " + reaction_temperature[:-2] + ", reaction_supplement = '" + reaction_supplement + "' WHERE enzyme_id = " + str(enzyme[0])
     try:
         c.execute(query)
         sqlcon.commit()

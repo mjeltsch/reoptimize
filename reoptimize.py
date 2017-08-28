@@ -46,10 +46,10 @@ assay_DNA_length = {  'λ': 48502,
                     'T4 wild-type phage': 168922 }
 
 @click.group()
-def greet():
+def optimize():
     pass
 
-@greet.command()
+@optimize.command()
 
 # These are the enzymes that are following the "digest" command: filename.py digest EcoRI HindIII
 @click.option('--enzymes', '-e', multiple=True, prompt='Enter enzymes like this: EcoRI 1 HindIII 2')
@@ -146,7 +146,7 @@ def digest(enzymes, microgram, length, time):
         enzyme[0] = enzyme[0][:32]
         # Make request to table "restriction_enzyme".
         # Convert all enzyme names to upper case first.
-        query = "SELECT enzyme_id, default_buffer, assay_DNA, assay_DNA_cuts, survival, reaction_temperature, enzyme_name FROM restriction_enzyme WHERE UPPER(enzyme_name) = '" + enzyme[0].upper() + "'"
+        query = "SELECT enzyme_id, default_buffer, assay_DNA, assay_DNA_cuts, survival, reaction_temperature, enzyme_name, reaction_supplement FROM restriction_enzyme WHERE UPPER(enzyme_name) = '" + enzyme[0].upper() + "'"
         try:
             cursor.execute(query)
             result = cursor.fetchone()
@@ -164,6 +164,8 @@ def digest(enzymes, microgram, length, time):
         assay_DNA_cuts = int(result[3])
         survival = result[4]
         reaction_temperature = result[5]
+        reaction_supplement = result[7]
+        debug_print("Result 5: " + str(result[5]))
         # Get all activity data for each buffer
         # Three-dimensional dictionary!
         list_of_enzyme_activities[enzyme_name] = {}
@@ -216,6 +218,12 @@ def digest(enzymes, microgram, length, time):
             fx = (0.4081*time+2.61)/(time+2.031)
             list_of_enzyme_activities[enzyme_name]['units'] = list_of_enzyme_activities[enzyme_name]['units'] * fx
 
+        # Add reaction temperatures to the list for a later comparison
+        list_of_enzyme_activities[enzyme_name]['reaction_temperature'] = reaction_temperature
+
+        # Add potential supplements to the list for a later comparison
+        list_of_enzyme_activities[enzyme_name]['reaction_supplement'] = reaction_supplement
+
     # END OF "ENZYME IN ENZYMES" LOOP
     #
     # Make a list of possible buffers where the digest is allowed
@@ -240,6 +248,21 @@ def digest(enzymes, microgram, length, time):
     # Sort the list of possible buffers according to highest cumulative activity
     possible_buffers = sorted(possible_buffers, key = lambda number: number[1], reverse = True)
 
+    # Separate the input from the result by a blank line
+    print("")
+
+    # Put all reaction temperatures into a list and check whether
+    # they are all the same, print warning if not
+    # Print warning if a supplement is needed!
+    temperature_list = []
+    for restriction_enzyme, value in list_of_enzyme_activities.items():
+        temperature_list.append(value['reaction_temperature'])
+        if value['reaction_supplement'] != '':
+            print("Note: " + value['reaction_supplement'] + "!")
+    debug_print("Temperature list: " + str(temperature_list))
+    if len(set(temperature_list)) != 1:
+        print("The reaction temperatures of the enzymes are dfferent and you should perform a sequential digest!")
+
     #
     # PRINT THE RESULTS
     #
@@ -248,7 +271,7 @@ def digest(enzymes, microgram, length, time):
     if len(possible_buffers) > 1:
         print("Digest is possible in the following buffers (avaraged % activity in brackets):")
         for buffer in possible_buffers:
-            print(str(buffer[0]) + " (" + str(round(buffer[1]/how_many_enzymes)) + ")", end = ' ')
+            print("- " + str(buffer[0]) + " (" + str(round(buffer[1]/how_many_enzymes)) + ")", end = ' ')
             #
             # Print the amount of enzymes needed
             #
@@ -297,9 +320,9 @@ def digest(enzymes, microgram, length, time):
     debug_print(possible_buffers)
     debug_print(list_of_enzyme_activities)
 
-@greet.command()
-def test(**kwargs):
-    print("This is only a test.")
+@optimize.command()
+def add(**kwargs):
+    print("'add' is only a dummy argument for the later implementation of adding enzymes, enzyme data and buffers.")
 
 if __name__ == '__main__':
-    greet()
+    optimize()
