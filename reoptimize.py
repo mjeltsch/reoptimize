@@ -3,6 +3,18 @@
 #
 # Example: restriction.py digest -e EcoRI 2 -e HindIII 1
 #
+# If only the enzymes and the number of sites in the target DNA are given,
+# the program will ask for amount and length of the target DNA and
+# the incubation time.
+#
+# All parameters can be given via the command line:
+#
+# -l length of target DNA: 3000 bp
+# -t incubation time: 4 hours
+# -m amount of target DNA: 2 micrograms
+#
+# ./reoptimize.py digest -e 'EcorI 2' -e 'HindIII 3' -l 3000 -t 4 -m 2
+#
 import sys
 # sqlite3 module to store the enzyme data in  local sqlite database file
 import sqlite3
@@ -117,14 +129,24 @@ def digest(enzymes, microgram, length, time):
         # Separate enzyme from number of cutting sites
         # enzyme[1] is name and enzyme[2] is number of cutting sites in assay DNA
         enzyme = enzyme.split(' ')
+        # Check whether the user has submitted two values for each enzyme (name + number of cuts in taget site)
+        # and whether the second value is an integer
+        if len(enzyme) < 2:
+            sys.exit("Please indicate the number of restriction sites after each enzyme name! Example: ./reoptimize.py digest -e 'AflIII 2' -e 'HindIII 1'")
+        # Try to convert the second value (= number of restriction sites in taget DNA) into an integer
+        try:
+            number_of_restriction_sites = int(enzyme[1])
+            #if not isinstance(number_of_restriction_sites, int):
+        except ValueError:
+            sys.exit("Please indicate the number of restriction sites after each enzyme name! Example: ./reoptimize.py digest -e 'AflIII 2' -e 'HindIII 1'")
         debug_print("enzyme[0]: " + enzyme[0])
         debug_print("enzyme[1]: " + enzyme[1])
-        list_of_enzyme_activities[enzyme[0]] = {}
-        debug_print("list_of_enzyme_activities: " + str(list_of_enzyme_activities))
+
         # Truncate too long enzyme names (the database holds only 32 character long enzyme names)
         enzyme[0] = enzyme[0][:32]
-        # Make request to table "restriction_enzyme"
-        query = "SELECT enzyme_id, default_buffer, assay_DNA, assay_DNA_cuts, survival, reaction_temperature FROM restriction_enzyme WHERE enzyme_name = '" + enzyme[0] + "'"
+        # Make request to table "restriction_enzyme".
+        # Convert all enzyme names to upper case first.
+        query = "SELECT enzyme_id, default_buffer, assay_DNA, assay_DNA_cuts, survival, reaction_temperature, enzyme_name FROM restriction_enzyme WHERE UPPER(enzyme_name) = '" + enzyme[0].upper() + "'"
         try:
             cursor.execute(query)
             result = cursor.fetchone()
@@ -135,6 +157,7 @@ def digest(enzymes, microgram, length, time):
         if result is None:
             sys.exit("There is no data for enzyme " + enzyme[0] + " in the database!")
         # Store all data in specific variables to free the result list variable
+        enzyme_name = result[6]
         enzyme_id = result[0]
         default_buffer = result[1]
         assay_DNA = result[2]
@@ -143,7 +166,9 @@ def digest(enzymes, microgram, length, time):
         reaction_temperature = result[5]
         # Get all activity data for each buffer
         # Three-dimensional dictionary!
-        list_of_enzyme_activities[enzyme[0]]['reaction_buffers'] = {}
+        list_of_enzyme_activities[enzyme_name] = {}
+        debug_print("list_of_enzyme_activities: " + str(list_of_enzyme_activities))
+        list_of_enzyme_activities[enzyme_name]['reaction_buffers'] = {}
         for buffer in buffer_list.keys():
             # The following query gets the following data (list of 2 items):
             # %-activity in current buffer, star activity in current buffer
@@ -153,7 +178,7 @@ def digest(enzymes, microgram, length, time):
                 cursor.execute(query)
                 result = cursor.fetchone()
                 # Add % activity
-                list_of_enzyme_activities[enzyme[0]]['reaction_buffers'][buffer] = result[0]
+                list_of_enzyme_activities[enzyme_name]['reaction_buffers'][buffer] = result[0]
                 debug_print(str(list_of_enzyme_activities))
                 # Add star activity
                 #list_of_enzyme_activities[enzyme[0]][buffer].append(result[1])
@@ -173,7 +198,7 @@ def digest(enzymes, microgram, length, time):
         #
         # Start calculating enzyme amounts here
         #
-        list_of_enzyme_activities[enzyme[0]]['units'] = microgram * int(enzyme[1]) * assay_DNA_length[assay_DNA] / (length * assay_DNA_cuts)
+        list_of_enzyme_activities[enzyme_name]['units'] = microgram * int(enzyme[1]) * assay_DNA_length[assay_DNA] / (length * assay_DNA_cuts)
 
         # Calculate the reduced enzyme amounts for digests != 1 hour.
         # If the enzyme survival is unknown (= 0) or if the enzyme does
@@ -183,13 +208,13 @@ def digest(enzymes, microgram, length, time):
         if survival == 8:
             # Formulas obtained empirically with NEB data using Matlab (rational function) regression
             fx = (0.05461*time+1.343)/(time+0.3991)
-            list_of_enzyme_activities[enzyme[0]]['units'] = list_of_enzyme_activities[enzyme[0]]['units'] * fx
+            list_of_enzyme_activities[enzyme_name]['units'] = list_of_enzyme_activities[enzyme_name]['units'] * fx
         elif survival == 4:
             fx = (0.1601*time+1.819)/(time+0.9845)
-            list_of_enzyme_activities[enzyme[0]]['units'] = list_of_enzyme_activities[enzyme[0]]['units'] * fx
+            list_of_enzyme_activities[enzyme_name]['units'] = list_of_enzyme_activities[enzyme_name]['units'] * fx
         elif survival == 2:
             fx = (0.4081*time+2.61)/(time+2.031)
-            list_of_enzyme_activities[enzyme[0]]['units'] = list_of_enzyme_activities[enzyme[0]]['units'] * fx
+            list_of_enzyme_activities[enzyme_name]['units'] = list_of_enzyme_activities[enzyme_name]['units'] * fx
 
     # END OF "ENZYME IN ENZYMES" LOOP
     #
@@ -232,7 +257,7 @@ def digest(enzymes, microgram, length, time):
                 if value['units']*100/percentage < 1:
                     rounded_units = str(round(value['units']*100/percentage, 2))
                 else:
-                    rounded_units = str(round(value['units']*100/percentage, 1))                    
+                    rounded_units = str(round(value['units']*100/percentage, 1))
                 print(restriction_enzyme + ": " + rounded_units + " units", end = ' ')
             print("")
     #
@@ -245,6 +270,17 @@ def digest(enzymes, microgram, length, time):
         print("% activity in brackets): ", end = "")
         for buffer in possible_buffers:
             print(str(buffer[0]) + " (" + str(round(buffer[1]/how_many_enzymes)) + ")")
+            #
+            # Print the amount of enzymes needed
+            #
+            for restriction_enzyme, value in list_of_enzyme_activities.items():
+                percentage = value['reaction_buffers'][buffer[0]]
+                if value['units']*100/percentage < 1:
+                    rounded_units = str(round(value['units']*100/percentage, 2))
+                else:
+                    rounded_units = str(round(value['units']*100/percentage, 1))
+                print(restriction_enzyme + ": " + rounded_units + " units", end = ' ')
+            print("")
     #
     # Print not recommended digests
     #
