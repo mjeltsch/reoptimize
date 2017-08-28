@@ -43,6 +43,18 @@ has two AflIII sites and one HindIII site:
 >./reoptimize.py digest -e 'AflIII 2' -e 'HindIII 1'
 
 
+This gives all necessary parameters via the command line:
+
+>./reoptimize.py digest -e 'EcoRI 2' -e 'HindIII 3' -l 3000 -t 4 -m 2
+
+-l (length of target dna, in base pairs)
+-t (incubation time, in hours)
+-m (amount of DNA, in micrograms)
+
+If enzymes or other parameters are omitted, the program will prompt
+for them!
+
+
 *make_sqlite_database.py*
 This script fetches all the data for NEB enzymes from the NEB web pages and
 assembles the database that is needed for the script to run. Running it
