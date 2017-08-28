@@ -9,7 +9,7 @@ attempt (and crashes immediately when you submit some wrongly formated data, inc
 ding capitalization), but it's going to improve slowly according to how much time
 we have. Planned are also GUI interfaces for Linux, macOS and Windows.
 
-Input needed:
+## Input needed:
 
 1. Enzyme name(s)
 2. How many cuts does the target DNA have for each selected enzyme?
@@ -17,13 +17,13 @@ Input needed:
 4. How long are you going to incubate the reaction (hours)?
 5. How much DNA do you want to cut (microgram)?
 
-Output:
+## Output:
 
 1. Possible buffers in the order of suitability (or the result "simultaneous digest not recommended")
 2. Amount of each enzyme needed.
 
 
-Requirements:
+## Requirements:
 Biopython, sqlite3, click
 
 Since even the latest Biopython distribution doesn't contain all enzymes sold by NEB,
@@ -32,23 +32,23 @@ Restriction_Dictionary.py by copying it into the Bio/Restriction folder of the
 folder, where your python3 stores the python packages. On Ubuntu 16.04, this
 would be /usr/lib/python3/dist-packages/Bio/Restriction.
 
-Files:
+## Files:
 
-reoptimize.py
+*reoptimize.py*
 The script that does the calculations. Usage examples:
 
 This is a double digest with AflIII and HindIII, where the target DNA
 has two AflIII sites and one HindIII site:  
 
-./reoptimize.py digest -e 'AflIII 2' -e 'HindIII 1'
+>./reoptimize.py digest -e 'AflIII 2' -e 'HindIII 1'
 
 
-make_sqlite_database.py
+*make_sqlite_database.py*
 This script fetches all the data for NEB enzymes from the NEB web pages and
 assembles the database that is needed for the script to run. Running it
 results in the dadabase file "REsqlite3.db"
 
-assay_DNAs.fasta
+*assay_DNAs.fasta*
 This files contains the full DNA sequences of all assay DNAs used by NEB. We
 include it here to avoid querying the "Frequency of restriction sites" table
 (which is anyway incomplete).
