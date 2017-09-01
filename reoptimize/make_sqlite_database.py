@@ -118,6 +118,15 @@ sqlite_file='REsqlite3.db'
 survival_list = {'+++': 8, '++': 4, '+': 2, '-': 1, '': 0}
 
 # Commands to make the database
+#
+# enzyme concentration is a list of sold concentrations (given in units/µl)
+# timesaver: 15 or 5 (minutes needed for complete digestion of 1 µg DNA with 1 µl enzyme)
+#
+# For buffer tables:
+#
+# activity: 0 to 100%
+# star activity: 1 = yes, 0 = no
+#
 textstring = '''DROP TABLE IF EXISTS `restriction_enzyme`\n
 CREATE TABLE `restriction_enzyme` (\
 `enzyme_id` mediumint(9) NOT NULL,\
@@ -131,6 +140,8 @@ CREATE TABLE `restriction_enzyme` (\
 `survival` int(2),\
 `assay_DNA_cuts` mediumint(9),\
 `reaction_supplement` varchar(255),\
+`enzyme_concentration` varchar(12),\
+`timesaver` int[2],\
  PRIMARY KEY (`enzyme_id`))\n
 DROP TABLE IF EXISTS `NEBuffer 1.1`\n
 CREATE TABLE `NEBuffer 1.1` (\
@@ -152,6 +163,12 @@ CREATE TABLE `NEBuffer 3.1` (\
  PRIMARY KEY (`enzyme_id`))\n
 DROP TABLE IF EXISTS `CutSmart® Buffer`\n
 CREATE TABLE `CutSmart® Buffer` (\
+`enzyme_id` mediumint(3) NOT NULL,\
+`activity` int(3),\
+`star_activity` BOOLEAN,\
+ PRIMARY KEY (`enzyme_id`))\n
+DROP TABLE IF EXISTS `NEBuffer EcoRI`\n
+CREATE TABLE `NEBuffer EcoRI` (\
 `enzyme_id` mediumint(3) NOT NULL,\
 `activity` int(3),\
 `star_activity` BOOLEAN,\
@@ -240,15 +257,15 @@ count_enzymes = 0
 count_buffer_entries = 0
 
 # Set all enzyme activities and star activity to 'unknown' (= -1)
-enzyme_activity = {'NEBuffer 1.1': [-1,-1], 'NEBuffer 2.1': [-1, -1], 'NEBuffer 3.1': [-1, -1], 'CutSmart® Buffer': [-1, -1], 'FastDigest buffer': [-1, -1]}
+enzyme_activity = {'NEBuffer 1.1': [-1,-1], 'NEBuffer 2.1': [-1, -1], 'NEBuffer 3.1': [-1, -1], 'CutSmart® Buffer': [-1, -1], 'FastDigest buffer': [-1, -1], 'NEBuffer EcoRI': [-1, -1]}
 
 # Get the survival table from NEB
 url1 = 'https://www.neb.com/tools-and-resources/usage-guidelines/restriction-endonucleases-survival-in-a-reaction'
 survivaltext = http.request('GET', url1).data.decode('utf-8')
 
-# Get the frequency of restriction sites table from NEB
-url1 = 'https://www.neb.com/tools-and-resources/selection-charts/frequencies-of-restriction-sites'
-frequencytext = http.request('GET', url1).data.decode('utf-8')
+# Get the timesaver table from NEB
+url1 = 'https://www.neb.com/tools-and-resources/selection-charts/time-saver-qualified-restriction-enzymes'
+timesavertext = http.request('GET', url1).data.decode('utf-8')
 
 # For these enzymes, do not attempt to retrieve assay DNA
 enzyme_blacklist_assay = ['McrBC']
@@ -259,6 +276,9 @@ enzyme_blacklist_survival = ['McrBC']
 # For these enzymes, do not attempt to retrieve frequency data
 enzyme_blacklist_frequency = []
 
+# For these enzymes, do not attempt to timesaver data
+enzyme_blacklist_timesaver = []
+
 for enzyme in result:
     # Get html page for the specific enzyme
     url = enzyme[2]
@@ -268,11 +288,16 @@ for enzyme in result:
     previousline = ''
     reaction_supplement = ''
     # If no notes are found ("\t\t<li id=\"note-", used below in code), assume that there is no star activity
+    # except for special buffers
     enzyme_activity['NEBuffer 1.1'][1] = 0
     enzyme_activity['NEBuffer 2.1'][1] = 0
     enzyme_activity['NEBuffer 3.1'][1] = 0
     enzyme_activity['CutSmart® Buffer'][1] = 0
     enzyme_activity['FastDigest buffer'][1] = -1
+    enzyme_activity['NEBuffer EcoRI'][1] = -1
+    # Make an empty enzyme concentration list (needed, since some producers
+    # sell the same enzyme at different concentrations
+    enzyme_concentration = []
     # Iterate through the lines of the html code
     for line in textstring.splitlines():
         # If the previous line matches
@@ -364,6 +389,15 @@ for enzyme in result:
                     assay_DNA = re_result2.group(2).strip()
                 else:
                     assay_DNA = 'unknown'
+        #
+        # ENZYME  CONCENTRATION
+        #
+        m = re.search("(units</td><td>)(.*)( units/ml</td><td class=)", line)
+        if str(m) != 'None':
+            # Only write to the enzyme concentration list if the value is not
+            # already in th elist
+            if int(m.group(2).split(',')[0]) not in enzyme_concentration:
+                enzyme_concentration.append(int(m.group(2).split(',')[0]))
 
         previousline = line
     #
@@ -378,14 +412,28 @@ for enzyme in result:
         for line in survivaltext.splitlines():
             # If the first 87 characters of the line match
             if line[:len(matchline)] == matchline:
-                debug_print("Matchline found:\n" + line)
+                debug_print("survival matchline found:\n" + line)
                 re_result = re.search("(<td>)(\+*|-)(</td>)", line)
                 survival = re_result.group(2)
     #
-    # RETRIEVE FREQUENCY DATA AFTER THE MAIN ENZYME PAGE HAS BEEN SCRAPED
-    # This should be replace by a generic tool that searches the sequence data
-    # of the assay DNAs for the frequency of restriction sites
-    # Maybe use biopython?
+    # RETRIVE TIME-SAVER STATUS AFTER THE MAIN ENZYME PAGE HAS BEEN SCRAPED
+    # https://www.neb.com/tools-and-resources/selection-charts/time-saver-qualified-restriction-enzymes
+    #
+    if enzyme[1] in enzyme_blacklist_timesaver:
+        timesaver = ''
+    else:
+        matchline = "\t\t\t\t<td><a href=\"/products/" + enzyme[2].split("/")[-1] + "\">" + enzyme[1] + "</a></td><td>"
+        timesaver = ''
+        for line in timesavertext.splitlines():
+            # If the first 87 characters of the line match
+            if line[:len(matchline)] == matchline:
+                debug_print("timesaver matchline found:\n" + line)
+                re_result = re.search("(.gif\" alt=\"Digest in )(1*5)( minutes\" Title=\")", line)
+                timesaver = re_result.group(2)
+
+    #
+    # CALCULATE FREQUENCY DATA AFTER THE MAIN ENZYME PAGE HAS BEEN SCRAPED
+    # This function depends on biopython
     #
 
     # Read assay DNA sequences
@@ -417,9 +465,15 @@ for enzyme in result:
     print("survival: " + survival)
     print("reaction temperature: " + reaction_temperature)
     print("reaction supplement: " + reaction_supplement)
+    conc = ''
+    enzyme_concentration.sort()
+    for value in enzyme_concentration:
+        conc += ',' + str(value)
+    print("enzyme concentration: " + conc)
+    print("timesaver: " + timesaver)
 
     # Update enzyme database with default buffer, assay DNA, survival after the whole text has been analyzed
-    query = "UPDATE restriction_enzyme SET default_buffer = '" + enzyme_buffer + "', assay_DNA = '" + assay_DNA + "', survival = " + str(survival_list[survival]) + ", assay_DNA_cuts = " + str(frequency) + ", reaction_temperature = " + reaction_temperature[:-2] + ", reaction_supplement = '" + reaction_supplement + "' WHERE enzyme_id = " + str(enzyme[0])
+    query = "UPDATE restriction_enzyme SET default_buffer = '" + enzyme_buffer + "', assay_DNA = '" + assay_DNA + "', survival = " + str(survival_list[survival]) + ", assay_DNA_cuts = " + str(frequency) + ", reaction_temperature = " + reaction_temperature[:-2] + ", reaction_supplement = '" + reaction_supplement + "', enzyme_concentration = '" + conc + "', timesaver = '" + timesaver + "' WHERE enzyme_id = " + str(enzyme[0])
     try:
         c.execute(query)
         sqlcon.commit()
@@ -439,7 +493,7 @@ for enzyme in result:
                 print("Error inserting enzyme " + enzyme[1] + " into buffer list. Error: " + str(err) + "\nQuery was: " + query)
 
     # Reset enzyme activities to "unknown" for new enzyme in the next iteration
-    enzyme_activity = {'NEBuffer 1.1': [-1,-1], 'NEBuffer 2.1': [-1, -1], 'NEBuffer 3.1': [-1, -1], 'CutSmart® Buffer': [-1, -1], 'FastDigest buffer': [-1, -1]}
+    enzyme_activity = {'NEBuffer 1.1': [-1,-1], 'NEBuffer 2.1': [-1, -1], 'NEBuffer 3.1': [-1, -1], 'CutSmart® Buffer': [-1, -1], 'FastDigest buffer': [-1, -1], 'NEBuffer EcoRI': [-1, -1]}
 
 print("Data for " + str(count_enzymes) + "/" + str(count_buffer_entries) + " enzymes inserted into db_ddcut database.")
 
